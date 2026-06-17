@@ -1,0 +1,74 @@
+// ─────────────────────────────────────────────────────────────
+// study-library — Prisma schema
+// Postgres (Neon / Supabase). Run `npm run db:push` to sync.
+// ─────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  READER // can browse + contribute once approved
+  ADMIN // can approve accounts and manage all reports
+}
+
+enum AccountStatus {
+  PENDING // self-registered, awaiting admin approval
+  APPROVED
+  REJECTED
+}
+
+enum Confidentiality {
+  PUBLIC // visible to everyone, file may be hosted
+  INTERNAL // visible to logged-in approved users
+  RESTRICTED // SharePoint link only, never a hosted file
+}
+
+enum SourceType {
+  FILE // PDF stored in Cloudflare R2
+  SHAREPOINT // external SharePoint URL, nothing hosted
+}
+
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  passwordHash String
+  displayName  String
+  role         Role          @default(READER)
+  status       AccountStatus @default(PENDING)
+  createdAt    DateTime      @default(now())
+
+  reports Report[]
+
+  @@index([status])
+}
+
+model Report {
+  id              String          @id @default(cuid())
+  title           String
+  authorName      String
+  documentDate    DateTime
+  topic           String
+  summary         String
+  confidentiality Confidentiality @default(INTERNAL)
+  sourceType      SourceType
+
+  // Exactly one of these is set, depending on sourceType:
+  fileKey       String? // R2 object key, for SourceType.FILE
+  fileName      String? // original filename for display
+  sharepointUrl String? // for SourceType.SHAREPOINT
+
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([confidentiality])
+  @@index([topic])
+  @@index([documentDate])
+}
